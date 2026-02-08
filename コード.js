@@ -348,39 +348,67 @@ function generateMeetingLog(fileUri, mimeType) {
   const currentYear = now.getFullYear();
   const url = `https://generativelanguage.googleapis.com/v1beta/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`;
   
+  // 精度向上のための詳細なシステム指示
   const promptText = `
+  # 役割
+  あなたは非常に優秀なエグゼクティブアシスタントです。提供された録音データから、正確な議事録を作成してください。
+
   # 前提条件
   - 本日の日付: ${todayStr}
-  - 文中で年が明示されていない日付は、原則として${currentYear}年として扱ってください。
-  # 役割
-  あなたはプロのプロジェクトマネージャー兼書記です。提供された音声データを分析し、以下のJSONフォーマットで出力してください。
-  【重要】
-  - Markdown装飾なしの純粋なJSONのみを返してください。
-  - アクションアイテムの期限は文脈から推定しYYYY-MM-DDに変換してください。
-  【出力フォーマット】
+  - 年が不明な日付は、原則として${currentYear}年として扱ってください。
+
+  # 抽出のガイドライン
+  1. **参加者 (attendees)**: 
+     - 挨拶や自己紹介、発言内容から、会議に参加している全員の名前を抽出してください。
+     - 名字だけでなくフルネームがわかる場合はフルネームで記載してください。
+  2. **アクションアイテム (actions)**:
+     - 誰かが「やります」「お願いします」と言ったタスクを漏らさず抽出してください。
+     - **重要**: 担当者が明言されていないが、文脈から判断できる場合はその人を記載してください。
+     - **重要**: 期限が「来週中」「今月末」などの相対的な表現の場合、本日(${todayStr})を基準に具体的な日付(YYYY-MM-DD)へ変換してください。
+  3. **要約 (summary)**:
+     - 決定事項を中心に、議論の経緯がわかるようにまとめてください。
+
+  # 出力形式 (JSONのみ)
   {
-    "title": "会議のタイトル",
+    "title": "会議の目的がわかる具体的なタイトル",
     "date": "YYYY-MM-DD",
-    "attendees": ["氏名1", "氏名2"],
-    "summary": "会議の要約（300文字以内）",
+    "attendees": ["名前1", "名前2"],
+    "summary": "要約テキスト（300文字以内）",
     "actions": [
       {
-        "task": "タスク内容",
+        "task": "具体的なタスク内容（〜を作成する、〜に連絡するなど）",
         "assignee": "担当者名",
-        "due_date": "YYYY-MM-DD"
+        "due_date": "YYYY-MM-DD（不明な場合は空文字）"
       }
     ]
   }`;
 
-  const payload = { "contents": [{ "parts": [{ "text": promptText }, { "file_data": { "mime_type": mimeType, "file_uri": fileUri } }] }] };
-  const response = UrlFetchApp.fetch(url, { "method": "post", "contentType": "application/json", "payload": JSON.stringify(payload), "muteHttpExceptions": true });
+  // response_mime_type を指定して JSON 出力を強制する設定を追加
+  const payload = { 
+    "contents": [{ 
+      "parts": [
+        { "text": promptText }, 
+        { "file_data": { "mime_type": mimeType, "file_uri": fileUri } }
+      ] 
+    }],
+    "generationConfig": {
+      "response_mime_type": "application/json"
+    }
+  };
+
+  const response = UrlFetchApp.fetch(url, { 
+    "method": "post", 
+    "contentType": "application/json", 
+    "payload": JSON.stringify(payload), 
+    "muteHttpExceptions": true 
+  });
   
   if (response.getResponseCode() !== 200) throw new Error(`Gemini API Error: ${response.getContentText()}`);
   
   const json = JSON.parse(response.getContentText());
   if (json.candidates && json.candidates[0].content) {
-    let text = json.candidates[0].content.parts[0].text;
-    return text.replace(/^```json\s*/, "").replace(/\s*```$/, "").trim();
+    // generationConfigでJSON指定しているため、バッククォート除去の必要性が低くなります
+    return json.candidates[0].content.parts[0].text.trim();
   }
   return null;
 }
