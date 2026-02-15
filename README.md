@@ -1,1 +1,2 @@
 # SmartMeetingHub_Core
+ボイスレコーダの音声ファイル、NOTTAの文字起こし結果をもとに内容を解析してNOTIONのDBにアップする
